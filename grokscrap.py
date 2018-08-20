@@ -71,26 +71,28 @@ def handleError(url, r, errors):
         elif errors=='print':
             print msg
 
+def printOcurrences(table):
+    print "NUMBER OF FILES: %d\n" % len(table)
+    for f in sorted(table.keys()):
+        lines = list(table[f])
+        lines.sort()
+        print "occurences in file <%s> in lines:\n  %s" % (f, str(lines))
+
+def printRevisions(revisions):
+    print "NUMBER OF REVISIONS: %d\n" % len(revisions)
+    i = 0
+    for rev, comment in revisions.keys():
+        print "---------------------------"
+        print "REVISION %d: %s" % (i, rev)
+        print comment
+        print "\n"
+        i=i+1
+    print "---------------------------"
+    
 #########################################################
 
 if __name__=='__main__':
     
-    def printOcurrences(table):
-        print "NUMBER OF FILES: %d\n" % len(table)
-        for f, lines in table.iteritems():
-            lines = list(lines)
-            lines.sort()
-            print "occurences in file <%s> in lines:\n  %s" % (f, str(lines))
-
-    def printRevisions(revisions):
-        print "NUMBER OF REVISIONS: %d\n" % len(revisions)
-        for rev, comment in revisions.iteritems():
-            print "---------------------------"
-            print "REVISION %s" % rev
-            print comment
-            print "\n"
-        print "---------------------------"
-        
     def BXR_SU():
         gs = GrokScraper(url='http://bxr.su', domain='', proj='FreeBSD', path='', nresults=100, errors='print')
         table = gs.getOcurrences('rt2561s')
