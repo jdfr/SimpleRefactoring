@@ -27,6 +27,7 @@ add_custom_target(copyfiles ALL
   COMMAND ${CMAKE_COMMAND} -E copy_if_different refactor.py  "${CMAKE_BINARY_DIR}/refactor.py"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different examples/test.cpp  "${CMAKE_BINARY_DIR}/examples/test.cpp"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different examples/include/test.hpp  "${CMAKE_BINARY_DIR}/examples/include/test.hpp"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different examples/config.xml  "${CMAKE_BINARY_DIR}/examples/config.xml"
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
 file(COPY examples DESTINATION "${CMAKE_BINARY_DIR}")

@@ -1,0 +1,12 @@
+<config>
+      <value name="DrinkSoda" value="Y">
+        <option name="type" value="diet"/>
+     </value>
+     <value name="UseSpanishLanguage" value="Y">
+ <option name="accent" value="Andalusian"/>
+     </value>
+     <value name="EatPie" value="N">
+          <option name="filling" value="pork"/>
+     </value>
+</config>
+     
