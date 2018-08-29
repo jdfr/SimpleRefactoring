@@ -1,12 +1,5 @@
 //------------------------------------------------------------------------------
-// AST matching sample. Demonstrates:
-//
-// * How to write a simple source tool using libTooling.
-// * How to use AST matchers to find interesting AST nodes.
-// * How to use the Rewriter API to rewrite the source code.
-//
-// Eli Bendersky (eliben@gmail.com)
-// This code is in the public domain
+// Adapted from Eli Bendersky's sample code
 //------------------------------------------------------------------------------
 #include <string>
 
@@ -31,6 +24,7 @@ static llvm::cl::OptionCategory CustomOptions("Custom options");
 static llvm::cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage); 
 static llvm::cl::opt<std::string> TermName("term", llvm::cl::cat(CustomOptions), llvm::cl::desc("config option name"), llvm::cl::value_desc("string literal (no spaces)")); 
 static llvm::cl::opt<bool> TermValue("value", llvm::cl::cat(CustomOptions), llvm::cl::desc("config option value"), llvm::cl::value_desc("true/false")); 
+static llvm::cl::opt<bool> Overwrite("overwrite", llvm::cl::cat(CustomOptions), llvm::cl::desc("overwrite source files"), llvm::cl::value_desc("true/false")); 
 
 //this function was lifted wholesale from clang
 static inline bool isWhitespaceExceptNL(unsigned char c) {
@@ -138,7 +132,7 @@ public:
                 /* At least in branches of conditional statements, clang treats the whitespace before simple
                 * statements as part of them, while compound statements just ignore whitespace. The unpleasant
                 * side effect is that it is difficult to get the indentation of simple statements right
-                * working purely from the AST, as simple statements have one indeleble whitespace character.
+                * working purely from the AST, as simple statements have one indelible whitespace character.
                 * This is a hack to get decent indentation for simple statements, most of the time, provided
                 * there are no inconvenient tabs within the whitespace. */
                 Rewrite.RemoveText(getComposedLoc(FID, ifIndentRange.end()-1), 1);
@@ -212,9 +206,18 @@ private:
 class MyFrontendAction : public ASTFrontendAction {
 public:
   MyFrontendAction() {}
+  ~MyFrontendAction() {
+      if (Overwrite.getValue()) {
+          //this overwrite changes to source files, both the source file and the included headers
+          llvm::errs() << "Overwriting files...\n";
+          TheRewriter.overwriteChangedFiles();
+          llvm::errs() << "Overwrite complete.\n";
+      }
+  }
   void EndSourceFileAction() override {
-    TheRewriter.getEditBuffer(TheRewriter.getSourceMgr().getMainFileID())
-        .write(llvm::outs());
+      if (!Overwrite.getValue()) {
+        TheRewriter.getEditBuffer(TheRewriter.getSourceMgr().getMainFileID()).write(llvm::outs());
+      }
   }
 
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI, StringRef file) override {

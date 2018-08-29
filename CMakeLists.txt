@@ -34,7 +34,7 @@ file(COPY examples DESTINATION "${CMAKE_BINARY_DIR}")
 
 #message(STATUS "EXAMPLES FROM THE COMMAND LINE (execute in the build directory after doing 'make'):")
 #message(STATUS "  TEST THE CLANG REFACTORING TOOL:")
-#message(STATUS "    ./simpleRefactor --term=UseSpanishLanguage --value=true examples/test.cpp -- -I./examples/include")
+#message(STATUS "    ./simpleRefactor --term=UseSpanishLanguage --value=true --overwrite examples/test.cpp -- -I./examples/include")
 #message(STATUS "  TEST THE GROK SCRAPER:")
 #message(STATUS "    ./grokscrap.py")
 #message(STATUS "  TEST THE PYTHON WRAPPER FOR THE REFACTORING TOOL:")
