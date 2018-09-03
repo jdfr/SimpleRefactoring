@@ -5,6 +5,62 @@ import grokscrap as gs
 import os
 import subprocess as subp
 
+#This class allows for (very handy) re-entrant lists of command-line calls. All you need is to call startStep() at the beginning and make sure to call endStep() at the end only if there was no problem and the list doesn't have to be replayed. And, of course, do not change the list across runs, at least in the parts already executed, or hard-to-debug problems will ensue
+class ExecuteContext:
+    def __init__(self, execute=True, verbose=False, stampName=os.path.join(os.getcwd(), 'step.txt')):
+        self.execute = execute
+        self.verbose = verbose
+        self.resumeFrom = None
+        self.stampName = stampName
+        self.step = 0
+
+    def writeStep(self, n):
+        self.step = n
+        with open(self.stampName, 'w') as f:
+            f.write(str(n))
+
+    def startStep(self):
+        if os.path.isfile(self.stampName):
+            with open(self.stampName, 'r') as f:
+                self.resumeFrom = int(f.read())
+        else:
+            self.resumeFrom = None
+        self.writeStep(0)
+
+    def endStep(self):
+        if os.path.isfile(self.stampName):
+            os.remove(self.stampName)
+
+    def prepareStep(self):
+        self.writeStep(self.step+1)
+        if (self.execute):
+                if self.resumeFrom==self.step:
+                    self.resumeFrom=None
+        return self.execute and self.resumeFrom is None
+
+    def doCommand(self, command, **kwargs):
+        if self.verbose:
+            print ' '.join(command)
+        if self.prepareStep():
+            ret = subp.call(command, **kwargs)
+            if ret!=0:
+                raise RuntimeError("Error in command <%s>" % ' '.join(command))
+
+    def doOverwritingCommand(slef, command, fileout, **kwargs):
+        if self.verbose:
+            print ' '.join(command)+' > '+fileout
+        if self.prepareStep():
+            output = subp.check_output(commandline, **kwargs)
+            with open(fileout, 'w') as svp:
+                svp.write(output)
+
+    def doCd(self, dr):
+        if (self.verbose):
+            print "cd "+dr
+        if self.prepareStep():
+            os.chdir(dr)
+
+#simple but high-level driver for the refactor binary, it basically does housekeeping and high-level planning; the binary does the grunt work.
 class ExternalRefactor:
     def __init__(self, 
                  translatepath=lambda x: x, 
