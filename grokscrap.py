@@ -81,7 +81,7 @@ def printOcurrences(table):
 def printRevisions(revisions):
     print "NUMBER OF REVISIONS: %d\n" % len(revisions)
     i = 0
-    for rev, comment in revisions.keys():
+    for rev, comment in revisions.iteritems():
         print "---------------------------"
         print "REVISION %d: %s" % (i, rev)
         print comment
