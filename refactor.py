@@ -34,8 +34,8 @@ class ExecuteContext:
     def prepareStep(self):
         self.writeStep(self.step+1)
         if (self.execute):
-                if self.resumeFrom==self.step:
-                    self.resumeFrom=None
+            if self.resumeFrom==self.step:
+                self.resumeFrom=None
         return self.execute and self.resumeFrom is None
 
     def doCommand(self, command, **kwargs):
@@ -46,7 +46,7 @@ class ExecuteContext:
             if ret!=0:
                 raise RuntimeError("Error in command <%s>" % ' '.join(command))
 
-    def doOverwritingCommand(slef, command, fileout, **kwargs):
+    def doOverwritingCommand(self, command, fileout, **kwargs):
         if self.verbose:
             print ' '.join(command)+' > '+fileout
         if self.prepareStep():
@@ -116,7 +116,7 @@ class ExternalRefactor:
         for grokfilepath in hpptable:
             if grokfilepath in table:
                 return grokfilepath
-        #this is a prertty dumbp brute-force approach, it might be far better to avoid greedy strategies and compute a minimal set of cpps for all hpps with ocurrences; however that might be inefficient for codebases with massively nested sets of header files
+        #this is a quite dumb brute-force approach, it might be far better to avoid greedy strategies and compute a minimal set of cpps for all hpps with ocurrences; however that might be inefficient for codebases with massively nested sets of header files
         for grokfilepath in hpptable:
             if grokfilepath.endswith(self.cppextensions):
                 return grokfilepath
