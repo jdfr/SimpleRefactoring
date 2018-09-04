@@ -114,7 +114,7 @@ class ExternalRefactor:
         hpptable = self.grokscraper.getOcurrences("include "+filename)
         #first check if the file is already in the table
         for grokfilepath in hpptable:
-            if grokfilepath in table:
+            if grokfilepath.endswith(self.cppextensions) and grokfilepath in table:
                 return grokfilepath
         #this is a quite dumb brute-force approach, it might be far better to avoid greedy strategies and compute a minimal set of cpps for all hpps with ocurrences; however that might be inefficient for codebases with massively nested sets of header files
         for grokfilepath in hpptable:
