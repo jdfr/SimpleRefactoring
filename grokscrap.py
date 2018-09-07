@@ -4,9 +4,11 @@ from lxml import etree
 import requests
 
 class GrokScraper:
-    __slots__ = ['url', 'domain', 'proj', 'path', 'nresults', 'errors']
+    __slots__ = ['url', 'domain', 'proj', 'path', 'nresults', 'errors', 'getRevisionText']
     
     def __init__(self, **kwargs):
+        #different grok versions might place the revision data in a different part of the DOM relative to the line elements, so use this as a means to customize the extraction code
+        self.getRevisionText = lambda occurence: ocurrence.getnext().iterchildren().__next__()
         for name, val in kwargs.iteritems():
             if name in self.__slots__:
                 setattr(self, name, val)
@@ -53,8 +55,8 @@ class GrokScraper:
                         #this is cheaper than using a more complex boolean condition like ".//a[(@class='l' or @class='hl') and @name='%d']"
                         xp = ".//a[@class='hl' and @name='%d']" % line
                         occs = root.xpath(xp)
-                    #I wouldn't need this contraption if I could express it in xpath, something like ".//a[@class='l' and @name='%d']/following::span/a"
-                    occ = occs[0].getnext().iterchildren().__next__()
+                    #I wouldn't need this contraption if I could express in xpath how to locate an element relative to an adjacent one, something like ".//a[@class='l' and @name='%d']/following::span/a"
+                    occ = self.getRevisionText(occs[0])
                     rev = occ.text
                     comment = occ.attrib['title']
                     if not rev in revisions:
