@@ -125,6 +125,7 @@ class ExternalRefactor:
                 ret = self.getCppForHppWithGrok(grokfilepath)
                 if ret is not None:
                     return ret
+        #there might be headers not included anywhere in the codebase (conceivably, they might be included by source files generated during the build process). If that's the case, here we should add some code to (a) use those generated sources (after compilation) or (b) generate some phony C++ source file that just includes the header and feed it to the binary tool 
         return None
 
     def doCPPFile(self, term, value, filepath):
@@ -189,7 +190,7 @@ if __name__=='__main__':
     context = ExecuteContext(verbose=True)
     external = ExternalRefactor(context,
                                 translatepath=translatepath,
-                                compiler_args=lambda x: ["-I./examples/include"],
+                                compiler_args=lambda x: ["-I./examples/include"], #if we used a non-installed binary release of clang (i.e. a clang release we just unzipped somewhere where we happen to have write permissions) to compile the binary tool, we should put in this list an additionsl include pointing to the location where clang's stddef.h lives inside the clang directory tree
                                 xml_xpath="/config/value[@name='%s']",
                                 execute=True,
                                 verbose=True)
