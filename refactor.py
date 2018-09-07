@@ -75,7 +75,7 @@ class ExternalRefactor:
                  grokscraper=None,
                  isxmlfile=lambda x: x.endswith(('.xml',)), 
                  xml_xpath=None, 
-                 simulate=False,
+                 execute=True,
                  verbose=True):
         self.context = context
         self.translatepath = translatepath
@@ -89,7 +89,7 @@ class ExternalRefactor:
         self.grokscraper = grokscraper
         self.xml_xpath = xml_xpath
         self.isxmlfile = isxmlfile
-        self.simulate = simulate
+        self.execute = execute
         self.verbose = verbose
         self.template = lambda term, value, filepath: [self.command, '--term=%s' % term, '--value=%s' % value, '--overwrite', filepath, '--']
 
@@ -131,13 +131,13 @@ class ExternalRefactor:
         commandline = self.template(term, value, filepath)+self.compiler_args_base+self.compiler_args(filepath)
         if self.verbose:
             print 'ON %s EXECUTE %s' % (self.exedir, ' '.join(commandline))
-        if not self.simulate:
+        if self.execute:
             self.context.doCommand(commandline, cwd=self.exedir)
 
     def doXMLFile(self, term, filepath):
         if self.verbose:
             print 'ON %s REMOVE REFERNCES TO %s' % (filepath, term)
-        if not self.simulate:
+        if self.execute:
             if self.context.prepareStep():
                 root = etree.parse(filepath)
                 res = root.xpath(self.xml_xpath % term)
@@ -187,6 +187,11 @@ if __name__=='__main__':
     
     translatepath = lambda x: os.path.join('examples', x)
     context = ExecuteContext(verbose=True)
-    external = ExternalRefactor(context, translatepath=translatepath, compiler_args=lambda x: ["-I./examples/include"], xml_xpath="/config/value[@name='%s']", simulate=False, verbose=True)
+    external = ExternalRefactor(context,
+                                translatepath=translatepath,
+                                compiler_args=lambda x: ["-I./examples/include"],
+                                xml_xpath="/config/value[@name='%s']",
+                                execute=True,
+                                verbose=True)
     table = {'test.cpp':[], 'config.xml':[]}
     external.doFilesFromTable(table, "UseSpanishLanguage", "true") 
