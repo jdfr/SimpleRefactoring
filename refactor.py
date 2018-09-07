@@ -91,7 +91,7 @@ class ExternalRefactor:
         self.isxmlfile = isxmlfile
         self.execute = execute
         self.verbose = verbose
-        self.template = lambda term, value, filepath: [self.command, '--term=%s' % term, '--value=%s' % value, '--overwrite', filepath, '--']
+        self.template = lambda term, value, filepath: [self.command, '--term=%s' % term, '--value=%s' % value, '--overwrite=true', filepath, '--']
 
     #do not forget to call this one if you want to make sure to also refactor instances that only apper in header files!
     def addCppFilesForHppFiles(self, table):
