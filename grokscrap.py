@@ -61,7 +61,7 @@ class GrokScraper:
                     rev = occ.text
                     comment = occ.attrib['title']
                     if not rev in revisions:
-                        revisions[rev] = comment.replace('\x0a', ' ').replace('<br/>', '\n')
+                        revisions[rev] = comment.encode('utf-8').replace('\x0a', ' ').replace('<br/>', '\n')
             else:
                 handleError(url, r, self.errors)
         return revisions
