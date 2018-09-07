@@ -44,6 +44,7 @@ class GrokScraper:
     def getRevisions(self, table):
         revisions = dict()
         for f, lines in table.iteritems():
+            #This assumes that grok is responsive serving annotated sources for all affected ones. Thia might not be the case for some files, and these should be filtered out here
             url = "%s%s?a=true" %(self.url, f)
             r = requests.get(url)
             if r.ok:
