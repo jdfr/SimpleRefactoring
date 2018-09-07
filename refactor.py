@@ -31,34 +31,44 @@ class ExecuteContext:
         if os.path.isfile(self.stampName):
             os.remove(self.stampName)
 
-    def prepareStep(self):
-        self.writeStep(self.step+1)
+    def checkStep(self):
         if (self.execute):
             if self.resumeFrom==self.step:
                 self.resumeFrom=None
         return self.execute and self.resumeFrom is None
 
+    def updateStep(self):
+        self.writeStep(self.step+1)
+
+    def actualDoCommand(self, command, **kwargs):
+        #this is intended to actually do subprocess call, as some esoteric special-needs tools might be so picky about how exactly they are invoked that you can't yjust assume that a straight subptocess.Popen/call will work
+        #default implementation just uses regular subprocess.call
+        return subp.call(command, **kwargs)
+
     def doCommand(self, command, **kwargs):
         if self.verbose:
             print ' '.join(command)
-        if self.prepareStep():
-            ret = subp.call(command, **kwargs)
+        if self.checkStep():
+            ret = self.actualDoCommand(command, **kwargs)
             if ret!=0:
                 raise RuntimeError("Error in command <%s>" % ' '.join(command))
+        self.updateStep()
 
     def doOverwritingCommand(self, command, fileout, **kwargs):
         if self.verbose:
             print ' '.join(command)+' > '+fileout
-        if self.prepareStep():
+        if self.checkStep():
             output = subp.check_output(commandline, **kwargs)
             with open(fileout, 'w') as svp:
                 svp.write(output)
+        self.updateStep()
 
     def doCd(self, dr):
-        if (self.verbose):
-            print "cd "+dr
-        if self.prepareStep():
+        if self.checkStep() or True: #as chdirs have critically important side-effects, they have to be replayed no matter what
             os.chdir(dr)
+        self.updateStep()
+        if self.verbose:
+            print "cd "+dr
 
 #simple but high-level driver for the refactor binary, it basically does housekeeping and high-level planning; the binary does the grunt work.
 class ExternalRefactor:
@@ -139,7 +149,7 @@ class ExternalRefactor:
         if self.verbose:
             print 'ON %s REMOVE REFERNCES TO %s' % (filepath, term)
         if self.execute:
-            if self.context.prepareStep():
+            if self.context.checkStep():
                 root = etree.parse(filepath)
                 res = root.xpath(self.xml_xpath % term)
                 if len(res)!=1:
@@ -149,6 +159,7 @@ class ExternalRefactor:
                     toremove.getparent().remove(toremove)
                     with open(filepath, 'w') as svp:
                         svp.write(etree.tostring(root))
+            self.context.updateStep()
 
     #main function, does the refactoring
     def doFilesFromTable(self, table, term, value):
