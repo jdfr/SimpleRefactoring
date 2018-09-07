@@ -54,15 +54,6 @@ class ExecuteContext:
                 raise RuntimeError("Error in command <%s>" % ' '.join(command))
         self.updateStep()
 
-    def doOverwritingCommand(self, command, fileout, **kwargs):
-        if self.verbose:
-            print ' '.join(command)+' > '+fileout
-        if self.checkStep():
-            output = subp.check_output(commandline, **kwargs)
-            with open(fileout, 'w') as svp:
-                svp.write(output)
-        self.updateStep()
-
     def doCd(self, dr):
         if self.checkStep() or True: #as chdirs have critically important side-effects, they have to be replayed no matter what
             os.chdir(dr)
