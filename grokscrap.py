@@ -8,7 +8,7 @@ class GrokScraper:
     
     def __init__(self, **kwargs):
         #different grok versions might place the revision data in a different part of the DOM relative to the line elements, so use this as a means to customize the extraction code
-        self.getRevisionText = lambda occurence: ocurrence.getnext().iterchildren().__next__()
+        self.getRevisionText = lambda occurrence: occurrence.getnext().iterchildren().__next__()
         for name, val in kwargs.iteritems():
             if name in self.__slots__:
                 setattr(self, name, val)
