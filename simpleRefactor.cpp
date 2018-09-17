@@ -45,7 +45,7 @@ public:
     IndentRange(unsigned a, unsigned b) : start(a), size(b) {} 
 };
 
-class RefactorIfStmt {
+class RefactorEngine {
     Rewriter *Rewrite;
     SourceManager *SourceMgr;
     const SrcMgr::ContentCache * Content;
@@ -108,21 +108,27 @@ class RefactorIfStmt {
     }
     
 public:
-    RefactorIfStmt() : computed(false) {}
+    RefactorEngine() : computed(false) {}
 
     void setRewriter(Rewriter *R) { Rewrite = R; SourceMgr = &R->getSourceMgr(); computed = false; }
     
-    void simpleRefactoIfStmt(const IfStmt *IfS) {
+    void showLine(const IfStmt *IfS) {
+        SourceLocation ifLoc = IfS->getIfLoc();
+        recompute(ifLoc);
+        llvm::errs() << "LINE: <" << getLine(ifLoc) << " in " << FID.getHashValue() << ">\n";
+    }
+
+    void simpleRefactorIfStmt(const IfStmt *IfS, bool value) {
         //const Expr *cond = IfS->getCond();
         const Stmt *Then = IfS->getThen();
         const Stmt *Else = IfS->getElse();
-        const Stmt *branch = TermValue.getValue() ? Then : Else;
+        const Stmt *branch = value ? Then : Else;
         if (branch) {
             const Stmt &branchR = *branch;
             bool compound = isa<CompoundStmt>(branchR);
             //the if keyword's indent range might be handy later
             IndentRange ifIndentRange = reindentBranch(IfS, branch);
-            if (TermValue.getValue()) {
+            if (value) {
                 Rewrite->RemoveText(SourceRange(IfS->getIfLoc(), Then->getLocStart().getLocWithOffset(-1)));
                 Rewrite->RemoveText(SourceRange(Then->getLocEnd().getLocWithOffset(1), IfS->getLocEnd()));
             } else {
@@ -146,25 +152,130 @@ public:
         }
     }
 
+    void simpleReplaceExpr(const Stmt *expr, StringRef value) {
+        Rewrite->ReplaceText(expr->getSourceRange(), value);
+    }
+
+    void simpleReplaceExpr(const Stmt *expr, const Stmt *newexpr) {
+        Rewrite->ReplaceText(expr->getSourceRange(), newexpr->getSourceRange());
+    }
+
 };
 
+//Result type for MatchHandler::simplePartialEvaluation
+typedef struct CondResult {
+    bool replaceByBool, val;
+    const Stmt *sub, *newval;
+    CondResult(const Stmt *s, bool v)       : replaceByBool(true),  val(v), sub(s) {}
+    CondResult(const Stmt *s, const Stmt *n): replaceByBool(false), sub(s), newval(n) {}
+} CondResult;
 
-class Handler : public MatchFinder::MatchCallback {
+class MatchHandler : public MatchFinder::MatchCallback {
 public:
-  Handler(RefactorIfStmt *r, std::string _literal) : reindentTool(r), literal(_literal) {}
+    MatchHandler(RefactorEngine *r, std::string _literal) : refactorTool(r), literal(_literal) {}
 
-  virtual void run(const MatchFinder::MatchResult &Result) {
-        // The matched 'if' statement was bound to 'ifStmt'.
-        const IfStmt *IfS = Result.Nodes.getNodeAs<clang::IfStmt>("ifStmt");
+    void setContext(ASTContext *c) { context = c; }
+
+    virtual void run(const MatchFinder::MatchResult &Result) {
+        ASTContext *Context = Result.Context;
         const StringLiteral *lit = Result.Nodes.getNodeAs<clang::StringLiteral>("strLiteral");
-        if (IfS && lit && lit->getString().str() == literal) {
-            reindentTool->simpleRefactoIfStmt(IfS);
+        bool isLit = lit && lit->getString().str() == literal;
+        if (!isLit) return;
+
+        const IfStmt *IfS;
+
+        if (IfS = Result.Nodes.getNodeAs<clang::IfStmt>("ifStmtWithConfigInCond")) {
+            //llvm::errs() << "IF STATEMENT WITH CONFIG VALUE, "; refactorTool->showLine(IfS);
+            //IfS->dump();
+            const CallExpr *config = Result.Nodes.getNodeAs<CallExpr>("callToConfigFunction");
+            const Expr *cond = IfS->getCond();
+            CondResult res = simplePartialEvaluation(config, TermValue.getValue(), cond);
+            if (res.replaceByBool) {
+                if (res.sub == cond) {
+                    refactorTool->simpleRefactorIfStmt(IfS, res.val);
+                } else {
+                    refactorTool->simpleReplaceExpr(res.sub, res.val ? "true" : "false");
+                }
+            } else {
+                refactorTool->simpleReplaceExpr(res.sub, res.newval);
+            }
+            return;
         }
-  }
+
+    }
+
+    CondResult simplePartialEvaluation(const Expr *sub, bool value, const Expr *wholeCond) {
+        const Stmt *s = sub, *toReturn = sub, *parent;
+        bool keepSearching = true;
+        while(s != wholeCond && keepSearching) {
+            const auto& allparents = context->getParents(*s);
+            if (allparents.size()!=1) {
+                llvm::errs() << "expression ancestry different than expected! At one point it has " << allparents.size() << " simultaneous ancestors!!!\n Bailing out of unwinding process...";
+                showParents(s);
+                keepSearching = false;
+            } else {
+                parent = allparents[0].get<Stmt>();
+                if (isa<ParenExpr>(parent)        ||
+                    isa<CastExpr>(parent)         ||
+                    isa<ExprWithCleanups>(parent) ) {
+                    //just go up!
+                } else if (isa<UnaryOperator>(parent)) {
+                    const UnaryOperator *o = allparents[0].get<UnaryOperator>();
+                    if (o->getOpcode()==UO_LNot) {
+                        value = !value;
+                    } else {
+                        //we do not know how to handle this, so bailing out.
+                        keepSearching = false;
+                    }
+                } else if (isa<BinaryOperator>(parent)) {
+                    const BinaryOperator *o = allparents[0].get<BinaryOperator>();
+                    auto opcode = o->getOpcode();
+                    if (opcode!=BO_LAnd && opcode!=BO_LOr) {
+                        //we do not know how to handle this, so bailing out.
+                        keepSearching = false;
+                    } else if ((opcode==BO_LAnd && !value) || (opcode==BO_LOr && value)) {
+                        //just go up!
+                    } else if ((opcode==BO_LAnd && value) || (opcode==BO_LOr && !value)) {
+                        //ok, we stop at this point and rewrite just a section of the logical expression
+                        const Stmt *lhs = o->getLHS();
+                        const Stmt *rhs = o->getRHS();
+                        const Stmt *other;
+                        if (lhs==s) {
+                            return CondResult(o, rhs);
+                        } else if (rhs==s) {
+                            return CondResult(o, lhs);
+                        } else {
+                            llvm::errs() << "There's something puzzling in the tree of this binary operator, so bailing out!\n";
+                            o->dump();
+                            keepSearching = false;
+                        }
+                    } else {
+                        //we do not know how to handle this, so bailing out.
+                        keepSearching = false;
+                    }
+                }
+            }
+            if (keepSearching) {
+                s = parent;
+            }
+        }
+        return CondResult(s, value);
+    }
+
+    void showParents(const Stmt *s) {
+        const auto& parents = context->getParents(*s);
+        int x=0;
+        for (auto parent: parents) {
+            llvm::errs() << "  Parent " << x++ << ": \n";
+            parent.get<Stmt>()->dump();
+        }
+    }
+
 
 private:
-    RefactorIfStmt *reindentTool;
+    RefactorEngine *refactorTool;
     std::string literal;
+    ASTContext *context;
 };
 
 // Implementation of the ASTConsumer interface for reading an AST produced
@@ -172,36 +283,38 @@ private:
 // the AST.
 class MyASTConsumer : public ASTConsumer {
 public:
-    MyASTConsumer(RefactorIfStmt *R) : handler(R, TermName.getValue()) {
+    MyASTConsumer(RefactorEngine *R) : handler(R, TermName.getValue()) {
         // Add a simple matcher for finding 'if' statements.
+
+        auto functionCall =
+            callExpr(
+                callee(functionDecl(hasAnyName(FUNCTION_NAMES))),
+                hasArgument(0, allOf(
+                                    hasDescendant(stringLiteral().bind("strLiteral")),
+                                    unless(anyOf(
+                                        hasDescendant(callExpr()),
+                                        hasDescendant(binaryOperator()),
+                                        hasDescendant(unaryOperator())
+                                    ))
+                ))
+                ).bind("callToConfigFunction");
 
         Matcher.addMatcher(
             ifStmt(
-                hasCondition(has(ignoringParenImpCasts(
-                    callExpr(
-                        callee(functionDecl(hasAnyName(FUNCTION_NAMES))),
-                        hasArgument(0, allOf(
-                                            hasDescendant(stringLiteral().bind("strLiteral")),
-                                            unless(anyOf(
-                                                hasDescendant(callExpr()),
-                                                hasDescendant(binaryOperator()),
-                                                hasDescendant(unaryOperator())
-                                            ))
-                        ))
-                     )//.bind("callToConfigFunction")
-                )))
-            ).bind("ifStmt"), 
+                hasCondition(hasDescendant(functionCall))
+            ).bind("ifStmtWithConfigInCond"),
             &handler
         );
     }
 
   void HandleTranslationUnit(ASTContext &Context) override {
+    handler.setContext(&Context);
     // Run the matchers when we have the whole TU parsed.
     Matcher.matchAST(Context);
   }
 
 private:
-  Handler handler;
+  MatchHandler handler;
   MatchFinder Matcher;
 };
 
@@ -225,13 +338,13 @@ public:
 
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI, StringRef file) override {
     TheRewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
-    reindentTool.setRewriter(&TheRewriter);
-    return llvm::make_unique<MyASTConsumer>(&reindentTool);
+    refactorTool.setRewriter(&TheRewriter);
+    return llvm::make_unique<MyASTConsumer>(&refactorTool);
   }
 
 private:
   Rewriter TheRewriter;
-  RefactorIfStmt reindentTool;
+  RefactorEngine refactorTool;
 };
 
 int main(int argc, const char **argv) {
