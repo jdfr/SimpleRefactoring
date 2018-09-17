@@ -112,10 +112,9 @@ public:
 
     void setRewriter(Rewriter *R) { Rewrite = R; SourceMgr = &R->getSourceMgr(); computed = false; }
     
-    void showLine(const IfStmt *IfS) {
-        SourceLocation ifLoc = IfS->getIfLoc();
-        recompute(ifLoc);
-        llvm::errs() << "LINE: <" << getLine(ifLoc) << " in " << FID.getHashValue() << ">\n";
+    void showLine(const SourceLocation loc) {
+        recompute(loc);
+        llvm::errs() << "LINE: <" << getLine(loc) << " in " << FID.getHashValue() << ">\n";
     }
 
     void simpleRefactorIfStmt(const IfStmt *IfS, bool value) {
@@ -182,26 +181,63 @@ public:
         bool isLit = lit && lit->getString().str() == literal;
         if (!isLit) return;
 
-        const IfStmt *IfS;
+        const IfStmt              *IfS = Result.Nodes.getNodeAs<clang::IfStmt>             ("ifStmtWithConfigInCond");
+        const ConditionalOperator *CdE = Result.Nodes.getNodeAs<clang::ConditionalOperator>("condOpWithConfigInCond");
 
-        if (IfS = Result.Nodes.getNodeAs<clang::IfStmt>("ifStmtWithConfigInCond")) {
-            //llvm::errs() << "IF STATEMENT WITH CONFIG VALUE, "; refactorTool->showLine(IfS);
-            //IfS->dump();
+        if (IfS && CdE) {
+            llvm::errs() << "This tool expects the matchers to be applied sequentially!!!!\n";
+            return;
+        } else if (IfS || CdE) {
+            /*if (IfS) {
+                llvm::errs() << "IF STATEMENT WITH CONFIG VALUE, "; refactorTool->showLine(IfS->getIfLoc());
+                IfS->dump();
+            } else {
+                llvm::errs() << "CONDITIONAL OPERATOR WITH CONFIG VALUE, "; refactorTool->showLine(CdE->getLocStart());
+                CdE->dump();
+            }*/
             const CallExpr *config = Result.Nodes.getNodeAs<CallExpr>("callToConfigFunction");
-            const Expr *cond = IfS->getCond();
+            const Expr *cond = IfS ? IfS->getCond() : CdE->getCond();
             CondResult res = simplePartialEvaluation(config, TermValue.getValue(), cond);
             if (res.replaceByBool) {
                 if (res.sub == cond) {
-                    refactorTool->simpleRefactorIfStmt(IfS, res.val);
+                    if (IfS) {
+                        refactorTool->simpleRefactorIfStmt(IfS, res.val);
+                    } else {
+                        //because of the very low precedence of the conditional operator, it is mostly safe to discard possible parentheses here
+                        refactorTool->simpleReplaceExpr(CdE, getExprIgnoreParensAndImpCasts(res.val ? CdE->getLHS() : CdE->getRHS()));
+                    }
                 } else {
                     refactorTool->simpleReplaceExpr(res.sub, res.val ? "true" : "false");
                 }
             } else {
+                //TODO: parentheses might be necessary after this rewriting; for example: UNRELATEDCONDITION && CONFIG && (A || B).
+                //      Ideally, we should add/remove them as necessary, taking into account the relative precedences of the ancestor and children
+                //      Meanwhile, this is a crude approximation to remove them if it seems safe to do so
+                const Expr *condNoParens = getExprIgnoreParensAndImpCasts(cond);
+                if (cast<Expr>(res.sub)==condNoParens) {
+                    res.sub = cond;
+                    res.newval = cast<Stmt>(getExprIgnoreParensAndImpCasts(cast<Expr>(res.newval)));
+                }
                 refactorTool->simpleReplaceExpr(res.sub, res.newval);
             }
             return;
         }
 
+    }
+
+    const Expr *getExprIgnoreParensAndImpCasts(const Expr *expr) {
+        while (isa<ParenExpr>(expr) || isa<CastExpr>(expr) || isa<ExprWithCleanups>(expr)) {
+            while (isa<ParenExpr>(expr)) {
+                expr = cast<ParenExpr>(expr)->getSubExpr();
+            }
+            while (isa<ImplicitCastExpr>(expr)) {
+                expr = cast<ImplicitCastExpr>(expr)->getSubExpr();
+            }
+            while (isa<ExprWithCleanups>(expr)) {
+                expr = cast<ExprWithCleanups>(expr)->getSubExpr();
+            }
+        }
+        return expr;
     }
 
     CondResult simplePartialEvaluation(const Expr *sub, bool value, const Expr *wholeCond) {
@@ -299,10 +335,23 @@ public:
                 ))
                 ).bind("callToConfigFunction");
 
+        //TODO: REWRITE ALL THIS SO WE EXCLUSIVELY MATCH THE CONFIG FUNCTION CALLS!!!!!
+        //      Specifically, this will require substantital refactoring to check if the calls are enclosed in the condition of an IfStmt or ConditionalOperator
+        //REASON: What if a matching conditional operator is nested in the condition of an also matching "if" statement/conditional operator?
+        //        We will not be amused debugging the ensuing chaos...
+        //        And matchers have not the right level of abstraction to discard such convoluted cases...
+
         Matcher.addMatcher(
             ifStmt(
-                hasCondition(hasDescendant(functionCall))
+                hasCondition(forEachDescendant(functionCall))
             ).bind("ifStmtWithConfigInCond"),
+            &handler
+        );
+
+        Matcher.addMatcher(
+            conditionalOperator(
+                hasCondition(forEachDescendant(functionCall))
+            ).bind("condOpWithConfigInCond"),
             &handler
         );
     }

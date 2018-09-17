@@ -70,7 +70,7 @@ int main() {
      else
          printf("THIRTEEN");
      //REWRITTEN (condition): !q
-     if (!q || !configVariable("UseSpanishLanguage",3,4))
+     if (((((!q)) || !configVariable("UseSpanishLanguage",3,4))))
          printf("CATORCE");
      else
          printf("FOURTEEN");
@@ -80,12 +80,12 @@ int main() {
      else
          printf("FIFTEEN");
      //REWRITTEN (condition): !q
-     if (configVariable("UseSpanishLanguage",3,4) && !q)
+     if (((configVariable("UseSpanishLanguage",3,4) && ((!q)))))
          printf("DIECISEIS");
      else
          printf("SIXTEEN");
      //REWRITTEN (condition): !q
-     if (((!(configVariable("UseSpanishLanguage",3,4)))) || !q)
+     if (((!(configVariable("UseSpanishLanguage",3,4)))) || ((!q)))
          printf("DIECISIETE");
      else
          printf("SEVENTEEN");
@@ -94,6 +94,24 @@ int main() {
          printf("DIECIOCHO");
      else
          printf("EIGHTEEN");
+     const char *x;
+     //REWRITTEN (LHS): "DIECINUEVE"
+     x = !q || configVariable("UseSpanishLanguage",3,4) ?
+             "DIECINUEVE"
+             :
+             "NINETEEN";
+     //REWRITTEN (RHS): "TWENTY"
+     x = !q && !configVariable("UseSpanishLanguage",3,4) ? "VEINTE" : (("TWENTY"));
+     //REWRITTEN (condition): configVariable(std::string("AnotherConfigValue"),3,4)
+     if (configVariable(std::string("AnotherConfigValue"),3,4) && configVariable(std::string("UseSpanishLanguage"),3,4))
+         printf("VEINTIUNO");
+     else
+         printf("TWENTYONE");
+     //REWRITTEN (condition): configVariable(std::string("AnotherConfigValue"),3,4)
+     if (configVariable(std::string("UseSpanishLanguage"),3,4) && configVariable(std::string("AnotherConfigValue"),3,4))
+         printf("VEINTIDOS");
+     else
+         printf("TWENTYTWO");
      return 0; 
     
 }
