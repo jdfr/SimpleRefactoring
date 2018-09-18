@@ -40,7 +40,7 @@ int main() {
        {
          printf("FIVE");
        }
-     //REWRITTEN (then BRANCH): SEIS
+     //REWRITTEN (then BRANCH): SEIS (the tool currently gets confused with the indentation for this one)
      if (configVariable("UseSpanishLanguage",3,4)) 
        { printf("SEIS"); }
      else 
