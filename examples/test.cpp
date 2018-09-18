@@ -3,6 +3,13 @@
 #include "test.hpp"
 
 //COMMENTS ASSUME THAT CONFIG VALUE IS true
+
+bool f0() { return configVariable("UseSpanishLanguage",3,4); } //REWRITTEN TO true
+
+bool f1() { return !configVariable("UseSpanishLanguage",3,4); } //REWRITTEN TO false
+
+bool f2(bool q) { return ((!q)) && configVariable("UseSpanishLanguage",3,4); } //REWRITTEN TO !q
+
 int main() { 
      int j;
      //REWRITTEN (then BRANCH): UNO
@@ -112,8 +119,20 @@ int main() {
          printf("VEINTIDOS");
      else
          printf("TWENTYTWO");
+     //REWRITTEN (condition): !q
+     if (configVariable(std::string("UseSpanishLanguage"),3,4) ? ((!q)) : q+42)
+         printf("VEINTITRES");
+     else
+         printf("TWENTYTHREE");
+     bool w0 = configVariable("UseSpanishLanguage",3,4); //REWRITTEN TO true
+     bool w1 = !configVariable("UseSpanishLanguage",3,4); //REWRITTEN TO false
+     bool w2 = ((!q)) && configVariable("UseSpanishLanguage",3,4); //REWRITTEN TO !q
+     w2 = configVariable("UseSpanishLanguage",3,4); //REWRITTEN TO true
+     w2 = !configVariable("UseSpanishLanguage",3,4); //REWRITTEN TO false
+     w2 = ((!q)) && configVariable("UseSpanishLanguage",3,4); //REWRITTEN TO !q
+     w2 = f2(((configVariable("UseSpanishLanguage",3,4)))); //REWRITTEN to true
+     w2 = f2((!(configVariable("UseSpanishLanguage",3,4)))); //REWRITTEN to false
+     w2 = f2(((!q)) && ((configVariable("UseSpanishLanguage",3,4)))); //REWRITTEN to !q
      return 0; 
     
 }
-
-

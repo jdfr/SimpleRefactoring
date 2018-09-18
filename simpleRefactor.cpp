@@ -169,6 +169,17 @@ typedef struct CondResult {
     CondResult(const Stmt *s, const Stmt *n): replaceByBool(false), sub(s), newval(n) {}
 } CondResult;
 
+//Result type for MatchHandler::getUseCase
+enum ParentType {ParentUnknown, ParentIf, ParentCE, ParentAssignmentRHS, ParentVarDecl, ParentNonSpecial};
+typedef struct ParentUseCase {
+    ParentType type;
+    const Stmt *parent;
+    const Expr *cond;
+    ParentUseCase() : type(ParentUnknown), parent(NULL), cond(NULL) {}
+    ParentUseCase(ParentType t, const Stmt *s) : type(t), parent(s), cond(NULL) {}
+    ParentUseCase(ParentType t, const Stmt *s, const Expr *e) : type(t), parent(s), cond(e) {}
+} ParentUseCase;
+
 class MatchHandler : public MatchFinder::MatchCallback {
 public:
     MatchHandler(RefactorEngine *r, std::string _literal) : refactorTool(r), literal(_literal) {}
@@ -181,30 +192,19 @@ public:
         bool isLit = lit && lit->getString().str() == literal;
         if (!isLit) return;
 
-        const IfStmt              *IfS = Result.Nodes.getNodeAs<clang::IfStmt>             ("ifStmtWithConfigInCond");
-        const ConditionalOperator *CdE = Result.Nodes.getNodeAs<clang::ConditionalOperator>("condOpWithConfigInCond");
+        const CallExpr *config = Result.Nodes.getNodeAs<CallExpr>("callToConfigFunction");
+        ParentUseCase p = getUseCase(cast<Stmt>(config));
 
-        if (IfS && CdE) {
-            llvm::errs() << "This tool expects the matchers to be applied sequentially!!!!\n";
-            return;
-        } else if (IfS || CdE) {
-            /*if (IfS) {
-                llvm::errs() << "IF STATEMENT WITH CONFIG VALUE, "; refactorTool->showLine(IfS->getIfLoc());
-                IfS->dump();
-            } else {
-                llvm::errs() << "CONDITIONAL OPERATOR WITH CONFIG VALUE, "; refactorTool->showLine(CdE->getLocStart());
-                CdE->dump();
-            }*/
-            const CallExpr *config = Result.Nodes.getNodeAs<CallExpr>("callToConfigFunction");
-            const Expr *cond = IfS ? IfS->getCond() : CdE->getCond();
-            CondResult res = simplePartialEvaluation(config, TermValue.getValue(), cond);
+        if (p.type==ParentIf || p.type==ParentCE) {
+            CondResult res = simplePartialEvaluation(config, TermValue.getValue(), p.cond);
             if (res.replaceByBool) {
-                if (res.sub == cond) {
-                    if (IfS) {
-                        refactorTool->simpleRefactorIfStmt(IfS, res.val);
+                if (res.sub == p.cond) {
+                    if (p.type==ParentIf) {
+                        refactorTool->simpleRefactorIfStmt(cast<IfStmt>(p.parent), res.val);
                     } else {
                         //because of the very low precedence of the conditional operator, it is mostly safe to discard possible parentheses here
-                        refactorTool->simpleReplaceExpr(CdE, getExprIgnoreParensAndImpCasts(res.val ? CdE->getLHS() : CdE->getRHS()));
+                        const ConditionalOperator * CdE = cast<ConditionalOperator>(p.parent);
+                        refactorTool->simpleReplaceExpr(p.parent, getExprIgnoreParensAndImpCasts(res.val ? CdE->getLHS() : CdE->getRHS()));
                     }
                 } else {
                     refactorTool->simpleReplaceExpr(res.sub, res.val ? "true" : "false");
@@ -213,16 +213,104 @@ public:
                 //TODO: parentheses might be necessary after this rewriting; for example: UNRELATEDCONDITION && CONFIG && (A || B).
                 //      Ideally, we should add/remove them as necessary, taking into account the relative precedences of the ancestor and children
                 //      Meanwhile, this is a crude approximation to remove them if it seems safe to do so
-                const Expr *condNoParens = getExprIgnoreParensAndImpCasts(cond);
+                const Expr *condNoParens = getExprIgnoreParensAndImpCasts(p.cond);
                 if (cast<Expr>(res.sub)==condNoParens) {
-                    res.sub = cond;
+                    res.sub = p.cond;
                     res.newval = cast<Stmt>(getExprIgnoreParensAndImpCasts(cast<Expr>(res.newval)));
                 }
                 refactorTool->simpleReplaceExpr(res.sub, res.newval);
             }
-            return;
+        } else if (p.type==ParentAssignmentRHS || (p.type==ParentNonSpecial && isa<Expr>(p.parent))) {
+            //TODO: when p.type==ParentAssignmentRHS, instead of this crude replacement, do further processing (out of the scope of this function):
+            //      if the variable is not used before this assignment, and there are no side effects, it can be removed, and its instances replaced by its value
+            //      (of course, the variable being assigned has to be captured in getUseCase()
+            const Expr * ep = cast<Expr>(p.parent);
+            CondResult res = simplePartialEvaluation(config, TermValue.getValue(), ep);
+            if (res.replaceByBool) {
+                refactorTool->simpleReplaceExpr(res.sub, res.val ? "true" : "false");
+            } else {
+                //TODO: same as above pattern
+                const Expr *condNoParens = getExprIgnoreParensAndImpCasts(ep);
+                if (cast<Expr>(res.sub)==condNoParens) {
+                    res.sub = ep;
+                    res.newval = cast<Stmt>(getExprIgnoreParensAndImpCasts(cast<Expr>(res.newval)));
+                }
+                refactorTool->simpleReplaceExpr(res.sub, res.newval);
+            }
         }
+    }
 
+    //crude function to discriminate different use cases. For each one we recognize, we try to provide the best superexpression containing
+    //the call to the config function, such that rewriting can be most optimized (i.e. redundant parentheses can be automatically discarded)
+    ParentUseCase getUseCase(const Stmt *expr) {
+        const Stmt *e = expr;
+        //TODO: detect instances used in declarations / assignments to boolean variables/members.
+        //      If doing so, further processing (out of the scope of this function): 
+        while (!isa<CompoundStmt>(e)) {
+            const auto& allparents = context->getParents(*e);
+            if (allparents.size()==1) {
+                if (allparents[0].get<Stmt>()!=NULL) {
+                    const Stmt *parent = allparents[0].get<Stmt>();
+                    if (isa<IfStmt>(parent)) {
+                        const IfStmt *p = cast<IfStmt>(parent);
+                        if (p->getCond()==e) {
+                            return ParentUseCase(ParentIf, parent, p->getCond());
+                        } else {
+                            //not in the condition
+                            return ParentUseCase(ParentNonSpecial, parent);
+                        }
+                    }
+                    if (isa<ConditionalOperator>(parent)) {
+                        const ConditionalOperator *p = cast<ConditionalOperator>(parent);
+                        if (p->getCond()==e) {
+                            return ParentUseCase(ParentCE, parent, p->getCond());
+                        } else {
+                            //not in the condition
+                            return ParentUseCase(ParentNonSpecial, parent);
+                        }
+                    }
+                    if (isa<BinaryOperator>(parent)) {
+                        const BinaryOperator *p = cast<BinaryOperator>(parent);
+                        if (p->getOpcode()==BO_Assign && p->getRHS()==e) {
+                            //in an asignment
+                            return ParentUseCase(ParentAssignmentRHS, p->getRHS());
+                        }
+                    }
+                    if (isa<CallExpr>(parent)) {
+                        const CallExpr *ce = cast<CallExpr>(parent);
+                        int na = ce->getNumArgs();
+                        for(int i=0; i<na; ++i) {
+                            const Expr *arg = ce->getArg(i);
+                            if (arg==e) {
+                                return ParentUseCase(ParentNonSpecial, e);
+                            }
+                        }
+                    }
+                    if (isa<ReturnStmt>(parent)) {
+                        //TODO: if the function has no side effects, we may refactor it out (but that is outside the scope of this pass)
+                        return ParentUseCase(ParentNonSpecial, e);
+                    }
+                    e = parent;
+                } else if (allparents[0].get<VarDecl>()!=NULL) {
+                    const Expr *vd = allparents[0].get<VarDecl>()->getInit();
+                    if (vd==e) {
+                        //not an asignment proper, but we can treat it like one...
+                        return ParentUseCase(ParentAssignmentRHS, vd);
+                    } else {
+                        //parent is a VarDecl, but something funky is going on...
+                        return ParentUseCase(ParentNonSpecial, e);
+                    }
+                } else {
+                    //parent is not a Stmt
+                    return ParentUseCase(ParentNonSpecial, e);
+                }
+            } else {
+                //number of parents != 1
+                return ParentUseCase(ParentNonSpecial, e);
+            }
+        }
+        //parent is a CompoundStmt
+        return ParentUseCase(ParentNonSpecial, e);
     }
 
     const Expr *getExprIgnoreParensAndImpCasts(const Expr *expr) {
@@ -240,10 +328,10 @@ public:
         return expr;
     }
 
-    CondResult simplePartialEvaluation(const Expr *sub, bool value, const Expr *wholeCond) {
+    CondResult simplePartialEvaluation(const Expr *sub, bool value, const Expr *whole) {
         const Stmt *s = sub, *toReturn = sub, *parent;
         bool keepSearching = true;
-        while(s != wholeCond && keepSearching) {
+        while(s != whole && keepSearching) {
             const auto& allparents = context->getParents(*s);
             if (allparents.size()!=1) {
                 llvm::errs() << "expression ancestry different than expected! At one point it has " << allparents.size() << " simultaneous ancestors!!!\n Bailing out of unwinding process...";
@@ -252,7 +340,7 @@ public:
             } else {
                 parent = allparents[0].get<Stmt>();
                 if (isa<ParenExpr>(parent)        ||
-                    isa<CastExpr>(parent)         ||
+                    isa<ImplicitCastExpr>(parent)         ||
                     isa<ExprWithCleanups>(parent) ) {
                     //just go up!
                 } else if (isa<UnaryOperator>(parent)) {
@@ -289,7 +377,7 @@ public:
                         //we do not know how to handle this, so bailing out.
                         keepSearching = false;
                     }
-                }
+                } //TODO: add support for more operators (and detect if we are actually nested in another condition (i.e. a ConditionalOperator nested in the condition of another one or the one of an IfStmt)
             }
             if (keepSearching) {
                 s = parent;
@@ -315,51 +403,35 @@ private:
 };
 
 // Implementation of the ASTConsumer interface for reading an AST produced
-// by the Clang parser. It registers a couple of matchers and runs them on
-// the AST.
+// by the Clang parser.
 class MyASTConsumer : public ASTConsumer {
 public:
     MyASTConsumer(RefactorEngine *R) : handler(R, TermName.getValue()) {
-        // Add a simple matcher for finding 'if' statements.
-
-        auto functionCall =
+        // Add a simple matcher for finding calls to config functions.
+        Matcher.addMatcher(
             callExpr(
-                callee(functionDecl(hasAnyName(FUNCTION_NAMES))),
-                hasArgument(0, allOf(
-                                    hasDescendant(stringLiteral().bind("strLiteral")),
-                                    unless(anyOf(
-                                        hasDescendant(callExpr()),
-                                        hasDescendant(binaryOperator()),
-                                        hasDescendant(unaryOperator())
-                                    ))
-                ))
-                ).bind("callToConfigFunction");
-
-        //TODO: REWRITE ALL THIS SO WE EXCLUSIVELY MATCH THE CONFIG FUNCTION CALLS!!!!!
-        //      Specifically, this will require substantital refactoring to check if the calls are enclosed in the condition of an IfStmt or ConditionalOperator
-        //REASON: What if a matching conditional operator is nested in the condition of an also matching "if" statement/conditional operator?
-        //        We will not be amused debugging the ensuing chaos...
-        //        And matchers have not the right level of abstraction to discard such convoluted cases...
-
-        Matcher.addMatcher(
-            ifStmt(
-                hasCondition(forEachDescendant(functionCall))
-            ).bind("ifStmtWithConfigInCond"),
+                     callee(functionDecl(hasAnyName(FUNCTION_NAMES))),
+                     hasArgument(0, allOf(
+                                          hasDescendant(stringLiteral().bind("strLiteral")),
+                                          unless(anyOf(
+                                                       hasDescendant(callExpr()),
+                                                       hasDescendant(binaryOperator()),
+                                                       hasDescendant(unaryOperator())
+                                                 ))
+                                 ))
+                     ).bind("callToConfigFunction"),
             &handler
         );
 
-        Matcher.addMatcher(
-            conditionalOperator(
-                hasCondition(forEachDescendant(functionCall))
-            ).bind("condOpWithConfigInCond"),
-            &handler
-        );
     }
 
   void HandleTranslationUnit(ASTContext &Context) override {
     handler.setContext(&Context);
-    // Run the matchers when we have the whole TU parsed.
+    // Run the matcher when we have the whole TU parsed.
     Matcher.matchAST(Context);
+    //TODO: here we might do further processing if required, such as creating and using new matchers/handlers or visitors for:
+    //   * refactoring out boolean variables which are given values based on config functions whose assignments have no side effects
+    //   * refactoring out simple boolean functions
   }
 
 private:
