@@ -1,0 +1,105 @@
+#include <stdio.h>
+#include <string>
+#include "test.hpp"
+
+//COMMENTS ASSUME THAT CONFIG VALUE IS true
+
+bool f0() { return true; } //REWRITTEN TO true
+
+bool f1() { return false; } //REWRITTEN TO false
+
+bool f2(bool q) { return !q; } //REWRITTEN TO !q
+
+int main() { 
+     int j;
+     //REWRITTEN (then BRANCH): UNO
+     printf("UNO");
+     //REWRITTEN: DOS
+     printf("DOS");
+     //REWRITTEN (then BRANCH): TRES
+      
+     printf("TRES"); 
+     
+     //REWRITTEN (then BRANCH): CUATRO
+      
+     printf("CUATRO"); 
+     
+     //REWRITTEN (then BRANCH): CINCO
+      
+     printf("CINCO"); 
+     
+     //REWRITTEN (then BRANCH): SEIS (the tool currently gets confused with the indentation for this one)
+       printf("SEIS"); 
+     //REWRITTEN (then BRANCH): SIETE
+     printf("SIETE");
+     //NOT REWRITTEN
+     if (configVariable(std::string("UseSpanishLanguage")+"Always",3,4)) 
+         printf("OCHO"); 
+     else 
+         printf("EIGHT");
+     //REWRITTEN (else BRANCH): NINE
+     printf("NINE");
+     bool q = true;
+     //REWRITTEN (condition): !q
+     if (!q)
+         printf("ONCE");
+     else
+         printf("ELEVEN");
+     //REWRITTEN (else BRANCH): TWELVE
+     printf("TWELVE");
+     //REWRITTEN (then BRANCH): TRECE
+     printf("TRECE");
+     //REWRITTEN (condition): !q
+     if (!q)
+         printf("CATORCE");
+     else
+         printf("FOURTEEN");
+     //REWRITTEN (then BRANCH): QUINCE
+     printf("QUINCE");
+     //REWRITTEN (condition): !q
+     if (!q)
+         printf("DIECISEIS");
+     else
+         printf("SIXTEEN");
+     //REWRITTEN (condition): !q
+     if (!q)
+         printf("DIECISIETE");
+     else
+         printf("SEVENTEEN");
+     //REWRITTEN (condition): false > 0
+     if (false > 0)
+         printf("DIECIOCHO");
+     else
+         printf("EIGHTEEN");
+     const char *x;
+     //REWRITTEN (LHS): "DIECINUEVE"
+     x = "DIECINUEVE";
+     //REWRITTEN (RHS): "TWENTY"
+     x = "TWENTY";
+     //REWRITTEN (condition): configVariable(std::string("AnotherConfigValue"),3,4)
+     if (configVariable(std::string("AnotherConfigValue"),3,4))
+         printf("VEINTIUNO");
+     else
+         printf("TWENTYONE");
+     //REWRITTEN (condition): configVariable(std::string("AnotherConfigValue"),3,4)
+     if (configVariable(std::string("AnotherConfigValue"),3,4))
+         printf("VEINTIDOS");
+     else
+         printf("TWENTYTWO");
+     //REWRITTEN (condition): !q
+     if (!q)
+         printf("VEINTITRES");
+     else
+         printf("TWENTYTHREE");
+     bool w0 = true; //REWRITTEN TO true
+     bool w1 = false; //REWRITTEN TO false
+     bool w2 = !q; //REWRITTEN TO !q
+     w2 = true; //REWRITTEN TO true
+     w2 = false; //REWRITTEN TO false
+     w2 = !q; //REWRITTEN TO !q
+     w2 = f2(true); //REWRITTEN to true
+     w2 = f2(false); //REWRITTEN to false
+     w2 = f2(!q); //REWRITTEN to !q
+     return 0; 
+    
+}

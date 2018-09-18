@@ -56,6 +56,35 @@ add_custom_target(copyfiles ALL
   COMMAND ${CMAKE_COMMAND} -E copy_if_different examples/config.xml  "${CMAKE_BINARY_DIR}/examples/config.xml"
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
+add_custom_target(tst-grokscrap
+  COMMAND "${CMAKE_BINARY_DIR}/grokscrap.py"
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+  COMMENT "run grokscrap.py example")
+
+add_custom_target(tst-refactor
+  COMMAND "${CMAKE_BINARY_DIR}/refactor.py"
+  COMMAND echo "REFACTORED test.hpp"
+  COMMAND cat examples/include/test.hpp
+  COMMAND echo "REFACTORED test.cpp"
+  COMMAND cat examples/test.cpp
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+  COMMENT "run refactor.py example in the build directory")
+
+add_custom_target(check
+  COMMAND echo "Diffing the refactored files. If no output is shown, they are identical."
+  COMMAND echo "DIFFS FOR test.hpp:"
+  COMMAND diff "${CMAKE_BINARY_DIR}/examples/include/test.hpp" "${CMAKE_SOURCE_DIR}/examples/include/test.hpp.refactored"
+  COMMAND echo "DIFFS FOR test.cpp:"
+  COMMAND diff "${CMAKE_BINARY_DIR}/examples/test.cpp" "${CMAKE_SOURCE_DIR}/examples/test.cpp.refactored"
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+  COMMENT "check if the results after running tst-refactor are the same as recorded")
+
+add_custom_target(accept
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/examples/include/test.hpp" "${CMAKE_SOURCE_DIR}/examples/include/test.hpp.refactored"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/examples/test.cpp" "${CMAKE_SOURCE_DIR}/examples/test.cpp.refactored"
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+  COMMENT "accept results of tst-refactor (must be run manually before running this one)")
+
 file(COPY examples DESTINATION "${CMAKE_BINARY_DIR}")
 
 #message(STATUS "EXAMPLES FROM THE COMMAND LINE (execute in the build directory after doing 'make'):")

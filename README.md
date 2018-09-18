@@ -10,3 +10,5 @@ Moreover, let's say you have the task to remove dead simple configuration values
 
 Python should be at least 2.7. The refactoring tool has been succesfully compiled with a clang 6.0 binary distribution (the one packaged in debian unstable) as of August 2018, will probably work for previous ones having the AST Matcher library. This repo is not intended as a finished, ready-to-use refactoring tool, but as a base to be adapted to each specific use case.
 
+The build system includes commands to run/accept some "regression" tests, see CMakeLists.txt for details.
+
